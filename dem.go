@@ -13,6 +13,25 @@ import (
 	"strings"
 )
 
+var G_Dn, G_Dsn string
+
+var Evb = &EvBase{}
+
+func init() {
+	Register("DEM", Evb)
+}
+
+//register one drive to system by name.
+func Register(n string, ev DbEv) {
+	sql.Register(n, &STDriver{N: n, Ev: ev})
+}
+
+func OpenDem() *sql.DB {
+	db, _ := sql.Open("DEM", G_Dsn)
+	return db
+}
+
+//
 var Error error = errors.New("text")
 
 //the type of TDbErr
@@ -30,6 +49,7 @@ const (
 	STMT_EXEC_ERR
 	ROWS_CLOSE_ERR
 	ROWS_NEXT_ERR
+	EMPTY_DATA_ERR
 	LAST_INSERT_ID_ERR
 	ROWS_AFFECTED_ERR
 )
@@ -58,6 +78,8 @@ func (t STErr) String() string {
 		return "ROWS_CLOSE_ERR"
 	case ROWS_NEXT_ERR:
 		return "ROWS_NEXT_ERR"
+	case EMPTY_DATA_ERR:
+		return "EMPTY_DATA_ERR"
 	case LAST_INSERT_ID_ERR:
 		return "LAST_INSERT_ID_ERR"
 	case ROWS_AFFECTED_ERR:
@@ -103,6 +125,7 @@ type DbEv interface {
 	OnResARow(res *STResult) error
 	//
 	OnRowNext(row *STRows) error
+	IsEmpty(row *STRows) bool
 	OnRowClose(row *STRows) error
 }
 type Query struct {
@@ -117,8 +140,14 @@ func (q *Query) Match(query string, args []driver.Value) bool {
 type EvBase struct {
 	Errs STErr
 	QErr []Query
+	Dn   string
 }
 
+func NewEvBase(dn string) *EvBase {
+	return &EvBase{
+		Dn: dn,
+	}
+}
 func (e *EvBase) SetErrs(err STErr) {
 	e.Errs = err
 }
@@ -149,6 +178,20 @@ func (e *EvBase) Match(query string, args []driver.Value) bool {
 		}
 	}
 	return false
+}
+func (e *EvBase) OnOpen(dsn string) (*sql.DB, error) {
+	err := e.Errs.IsErr(OPEN_ERR)
+	if err != nil {
+		return nil, err
+	}
+	dn := ""
+	if len(e.Dn) < 1 {
+		dn = G_Dn
+	}
+	if len(dn) < 1 {
+		return nil, errors.New("dbname is not initial for event handler")
+	}
+	return sql.Open(dn, dsn)
 }
 func (e *EvBase) OnBegin(c *STConn) error {
 	return e.Errs.IsErr(BEGIN_ERR)
@@ -200,13 +243,11 @@ func (e *EvBase) OnResARow(res *STResult) error {
 func (e *EvBase) OnRowNext(row *STRows) error {
 	return e.Errs.IsErr(ROWS_NEXT_ERR)
 }
+func (e *EvBase) IsEmpty(row *STRows) bool {
+	return e.Errs.Is(EMPTY_DATA_ERR)
+}
 func (e *EvBase) OnRowClose(row *STRows) error {
 	return e.Errs.IsErr(ROWS_CLOSE_ERR)
-}
-
-//register one drive to system by name.
-func Register(n string, ev DbEv) {
-	sql.Register(n, &STDriver{N: n, Ev: ev})
 }
 
 type STDriver struct {
@@ -371,6 +412,9 @@ func (rc *STRows) Columns() []string {
 func (rc *STRows) Next(dest []driver.Value) error {
 	if e := rc.Ev.OnRowNext(rc); e != nil {
 		return e
+	}
+	if rc.Ev.IsEmpty(rc) {
+		return io.EOF
 	}
 	if rc.Rows.Next() {
 		l := len(rc.Columns())

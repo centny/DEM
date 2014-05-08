@@ -15,16 +15,6 @@ import (
 
 const TDbCon string = "cny:123@tcp(127.0.0.1:3306)/cny?charset=utf8"
 
-type TDbEv struct {
-	EvBase
-}
-
-func (t *TDbEv) OnOpen(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("mysql", dsn)
-	// fmt.Println("kkkkkkkk")
-	return db, err
-}
-
 type TSt struct {
 	Tid    int64     `m2s:"TID"`
 	Tname  string    `m2s:"TNAME"`
@@ -40,14 +30,18 @@ type TSt struct {
 }
 
 func TestDem(t *testing.T) {
-	ev := &TDbEv{}
-	fmt.Println(ev)
-	Register("SqlT", ev)
-	db, _ := sql.Open("SqlT", test.TDbCon)
+	db, _ := sql.Open("DEM", test.TDbCon)
+	db.Begin()
+	NewEvBase("")
+	//
+	G_Dn = "mysql"
+	G_Dsn = TDbCon
+	ev := Evb
+	db = OpenDem()
 	T(db, t)
 	db.Close()
 	//
-	db, _ = sql.Open("SqlT", test.TDbCon)
+	db = OpenDem()
 	dbutil.DbExecF(db, "ttable.sql")
 	//
 	ev.AddQErr3(".*ttable.*")
@@ -81,6 +75,9 @@ func TestDem(t *testing.T) {
 	ev.SetErrs(LAST_INSERT_ID_ERR)
 	T2(db, t)
 	//
+	ev.SetErrs(EMPTY_DATA_ERR)
+	T2(db, t)
+	//
 	ev.SetErrs(CLOSE_ERR)
 	db.Close()
 	//
@@ -88,7 +85,7 @@ func TestDem(t *testing.T) {
 	db.Close()
 	//
 	ev.SetErrs(OPEN_ERR)
-	db, _ = sql.Open("SqlT", test.TDbCon)
+	db = OpenDem()
 	db.Begin()
 	//
 	ev.AddErrs(OPEN_ERR)
@@ -96,6 +93,7 @@ func TestDem(t *testing.T) {
 	var ee STErr = 100
 	fmt.Println(ee.String())
 	fmt.Println(OPEN_ERR.String())
+	fmt.Println(EMPTY_DATA_ERR.String())
 }
 func T(db *sql.DB, t *testing.T) {
 	err := dbutil.DbExecF(db, "ttable.sql")

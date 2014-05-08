@@ -13,6 +13,7 @@ echo "Installing Dependence"
 echo "Running Test"
 pkgs="\
  github.com/Centny/DEM\
+ github.com/Centny/DEM/example\
 "
 echo "mode: set" > a.out
 for p in $pkgs;
