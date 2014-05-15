@@ -13,8 +13,10 @@ import (
 	"strings"
 )
 
+//global databse name and connection
 var G_Dn, G_Dsn string
 
+//globack event callback instance.
 var Evb = &EvBase{}
 
 func init() {
@@ -32,11 +34,11 @@ func OpenDem() *sql.DB {
 }
 
 //
-var Error error = errors.New("text")
 
 //the type of TDbErr
 type STErr uint32
 
+//all error type
 const (
 	OPEN_ERR STErr = 1 << iota
 	BEGIN_ERR
@@ -105,6 +107,7 @@ func (t STErr) IsErr(e STErr) error {
 	}
 }
 
+//the database event interface for all callback
 type DbEv interface {
 	//
 	OnOpen(dsn string) (*sql.DB, error)
@@ -137,6 +140,7 @@ func (q *Query) Match(query string, args []driver.Value) bool {
 	return q.Q.MatchString(query) && q.Args.MatchString(fmt.Sprintf("%v", args))
 }
 
+//base event inteface implementation.
 type EvBase struct {
 	Errs STErr
 	QErr []Query
