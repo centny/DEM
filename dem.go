@@ -152,6 +152,10 @@ func NewEvBase(dn string) *EvBase {
 		Dn: dn,
 	}
 }
+func (e *EvBase) ResetErr() {
+	e.SetErrs(0)
+	e.ClsQErr()
+}
 func (e *EvBase) SetErrs(err STErr) {
 	e.Errs = err
 }

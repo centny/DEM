@@ -9,6 +9,7 @@ import (
 	"github.com/Centny/Cny4go/test"
 	"github.com/Centny/Cny4go/util"
 	_ "github.com/go-sql-driver/mysql"
+	"regexp"
 	"testing"
 	"time"
 )
@@ -94,6 +95,7 @@ func TestDem(t *testing.T) {
 	fmt.Println(ee.String())
 	fmt.Println(OPEN_ERR.String())
 	fmt.Println(EMPTY_DATA_ERR.String())
+	ev.ResetErr()
 }
 func T(db *sql.DB, t *testing.T) {
 	err := dbutil.DbExecF(db, "ttable.sql")
@@ -341,3 +343,7 @@ func Map2Val2(columns []string, row map[string]interface{}, dest []driver.Value)
 // 	db.Close()
 // 	dbutil.DbExecF(db, "ttable.sql")
 // }
+
+func TestTt(t *testing.T) {
+	fmt.Println(regexp.MustCompile("(?i)a.*").MatchString("Ass"))
+}
