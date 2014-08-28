@@ -69,4 +69,7 @@ func TestList(t *testing.T) {
 	if err == nil {
 		t.Error("not error")
 	}
+
+	//error count match
+	DEM.Evb.AddEC(DEM.OPEN_ERR, 2)
 }
