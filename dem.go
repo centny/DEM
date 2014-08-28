@@ -13,99 +13,16 @@ import (
 	"strings"
 )
 
-//global databse name and connection
-var G_Dn, G_Dsn string
-
-//globack event callback instance.
-var Evb = &EvBase{}
-
-func init() {
-	Register("DEM", Evb)
-}
-
 //register one drive to system by name.
 func Register(n string, ev DbEv) {
 	sql.Register(n, &STDriver{N: n, Ev: ev})
 }
 
-func OpenDem() *sql.DB {
-	db, _ := sql.Open("DEM", G_Dsn)
-	return db
-}
-
-//
-
-//the type of TDbErr
-type STErr uint32
-
-//all error type
-const (
-	OPEN_ERR STErr = 1 << iota
-	BEGIN_ERR
-	CLOSE_ERR
-	PREPARE_ERR
-	TX_ROLLBACK_ERR
-	TX_COMMIT_ERR
-	STMT_CLOSE_ERR
-	STMT_QUERY_ERR
-	STMT_EXEC_ERR
-	ROWS_CLOSE_ERR
-	ROWS_NEXT_ERR
-	EMPTY_DATA_ERR
-	LAST_INSERT_ID_ERR
-	ROWS_AFFECTED_ERR
-)
-
-func (t STErr) String() string {
-	switch t {
-	case OPEN_ERR:
-		return "OPEN_ERR"
-	case BEGIN_ERR:
-		return "CONN_BEGIN_ERR"
-	case CLOSE_ERR:
-		return "CONN_CLOSE_ERR"
-	case PREPARE_ERR:
-		return "PREPARE_ERR"
-	case TX_ROLLBACK_ERR:
-		return "ROLLBACK_ERR"
-	case TX_COMMIT_ERR:
-		return "COMMIT_ERR"
-	case STMT_CLOSE_ERR:
-		return "STMT_CLOSE_ERR"
-	case STMT_QUERY_ERR:
-		return "STMT_QUERY_ERR"
-	case STMT_EXEC_ERR:
-		return "STMT_EXEC_ERR"
-	case ROWS_CLOSE_ERR:
-		return "ROWS_CLOSE_ERR"
-	case ROWS_NEXT_ERR:
-		return "ROWS_NEXT_ERR"
-	case EMPTY_DATA_ERR:
-		return "EMPTY_DATA_ERR"
-	case LAST_INSERT_ID_ERR:
-		return "LAST_INSERT_ID_ERR"
-	case ROWS_AFFECTED_ERR:
-		return "ROWS_AFFECTED_ERR"
-	}
-	return ""
-}
-
-//if error contain target error.
-func (t STErr) Is(e STErr) bool {
-	if (t & e) == e {
-		return true
-	} else {
-		return false
-	}
-}
-
-func (t STErr) IsErr(e STErr) error {
-	if t.Is(e) {
-		return errors.New(fmt.Sprintf("DEM %v", e.String()))
-	} else {
-		return nil
-	}
-}
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// Driver ///////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
 
 //the database event interface for all callback
 type DbEv interface {
@@ -131,133 +48,8 @@ type DbEv interface {
 	IsEmpty(row *STRows) bool
 	OnRowClose(row *STRows) error
 }
-type Query struct {
-	Q    *regexp.Regexp
-	Args *regexp.Regexp
-}
 
-func (q *Query) Match(query string, args []driver.Value) bool {
-	return q.Q.MatchString(query) && q.Args.MatchString(fmt.Sprintf("%v", args))
-}
-
-//base event inteface implementation.
-type EvBase struct {
-	Errs STErr
-	QErr []Query
-	Dn   string
-}
-
-func NewEvBase(dn string) *EvBase {
-	return &EvBase{
-		Dn: dn,
-	}
-}
-func (e *EvBase) ResetErr() {
-	e.SetErrs(0)
-	e.ClsQErr()
-}
-func (e *EvBase) SetErrs(err STErr) {
-	e.Errs = err
-}
-func (e *EvBase) AddErrs(err STErr) *EvBase {
-	e.Errs = e.Errs | err
-	return e
-}
-func (e *EvBase) ClsQErr() {
-	e.QErr = []Query{}
-}
-func (e *EvBase) AddQErr(err Query) *EvBase {
-	e.QErr = append(e.QErr, err)
-	return e
-}
-func (e *EvBase) AddQErr2(qreg string, areg string) *EvBase {
-	return e.AddQErr(Query{
-		Q:    regexp.MustCompile(qreg),
-		Args: regexp.MustCompile(areg),
-	})
-}
-func (e *EvBase) AddQErr3(qreg string) *EvBase {
-	return e.AddQErr2(qreg, ".*")
-}
-func (e *EvBase) Match(query string, args []driver.Value) bool {
-	for _, q := range e.QErr {
-		if q.Match(query, args) {
-			return true
-		}
-	}
-	return false
-}
-func (e *EvBase) OnOpen(dsn string) (*sql.DB, error) {
-	err := e.Errs.IsErr(OPEN_ERR)
-	if err != nil {
-		return nil, err
-	}
-	dn := ""
-	if len(e.Dn) < 1 {
-		dn = G_Dn
-	}
-	if len(dn) < 1 {
-		return nil, errors.New("dbname is not initial for event handler")
-	}
-	return sql.Open(dn, dsn)
-}
-func (e *EvBase) OnBegin(c *STConn) error {
-	return e.Errs.IsErr(BEGIN_ERR)
-}
-func (e *EvBase) OnPrepare(c *STConn, query string) error {
-	return e.Errs.IsErr(PREPARE_ERR)
-}
-func (e *EvBase) OnNumInput(c *STConn, query string, stm *sql.Stmt) int {
-	return strings.Count(query, "?")
-}
-func (e *EvBase) OnClose(c *STConn) error {
-	return e.Errs.IsErr(CLOSE_ERR)
-}
-func (e *EvBase) OnTxCommit(tx *STTx) error {
-	return e.Errs.IsErr(TX_COMMIT_ERR)
-}
-func (e *EvBase) OnTxRollback(tx *STTx) error {
-	return e.Errs.IsErr(TX_ROLLBACK_ERR)
-}
-func (e *EvBase) OnStmQuery(stm *STStmt, args []driver.Value) error {
-	err := e.Errs.IsErr(STMT_QUERY_ERR)
-	if err != nil {
-		return err
-	}
-	if e.Match(stm.Q, args) {
-		return errors.New("DEM query matched error")
-	}
-	return nil
-}
-func (e *EvBase) OnStmExec(stm *STStmt, args []driver.Value) error {
-	err := e.Errs.IsErr(STMT_EXEC_ERR)
-	if err != nil {
-		return err
-	}
-	if e.Match(stm.Q, args) {
-		return errors.New("DEM query matched error")
-	}
-	return nil
-}
-func (e *EvBase) OnStmClose(stm *STStmt) error {
-	return e.Errs.IsErr(STMT_CLOSE_ERR)
-}
-func (e *EvBase) OnResLIId(res *STResult) error {
-	return e.Errs.IsErr(LAST_INSERT_ID_ERR)
-}
-func (e *EvBase) OnResARow(res *STResult) error {
-	return e.Errs.IsErr(ROWS_AFFECTED_ERR)
-}
-func (e *EvBase) OnRowNext(row *STRows) error {
-	return e.Errs.IsErr(ROWS_NEXT_ERR)
-}
-func (e *EvBase) IsEmpty(row *STRows) bool {
-	return e.Errs.Is(EMPTY_DATA_ERR)
-}
-func (e *EvBase) OnRowClose(row *STRows) error {
-	return e.Errs.IsErr(ROWS_CLOSE_ERR)
-}
-
+////////////////////////////////////////////////////////////////////////////////////
 type STDriver struct {
 	N  string //driver name.
 	Ev DbEv   //database evernt
@@ -446,4 +238,293 @@ func (rc *STRows) Close() error {
 		return e
 	}
 	return rc.Rows.Close()
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Log /////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+
+var s_log bool = false
+
+func ShowLog(v bool) {
+	s_log = v
+}
+func log(f string, args ...interface{}) {
+	if s_log {
+		fmt.Println(fmt.Sprintf("DEM %v", fmt.Sprintf(f, args...)))
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Log /////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+
+func OpenDem() *sql.DB {
+	db, _ := sql.Open("DEM", G_Dsn)
+	return db
+}
+
+//global databse name and connection
+var G_Dn, G_Dsn string
+
+//globack event callback instance.
+var Evb *EcEv
+
+//
+
+//the type of TDbErr
+type STErr uint32
+
+//all error type
+const (
+	OPEN_ERR STErr = 1 << iota
+	BEGIN_ERR
+	CLOSE_ERR
+	PREPARE_ERR
+	TX_ROLLBACK_ERR
+	TX_COMMIT_ERR
+	STMT_CLOSE_ERR
+	STMT_QUERY_ERR
+	STMT_EXEC_ERR
+	ROWS_CLOSE_ERR
+	ROWS_NEXT_ERR
+	EMPTY_DATA_ERR
+	LAST_INSERT_ID_ERR
+	ROWS_AFFECTED_ERR
+)
+
+func (t STErr) String() string {
+	switch t {
+	case OPEN_ERR:
+		return "OPEN_ERR"
+	case BEGIN_ERR:
+		return "CONN_BEGIN_ERR"
+	case CLOSE_ERR:
+		return "CONN_CLOSE_ERR"
+	case PREPARE_ERR:
+		return "PREPARE_ERR"
+	case TX_ROLLBACK_ERR:
+		return "ROLLBACK_ERR"
+	case TX_COMMIT_ERR:
+		return "COMMIT_ERR"
+	case STMT_CLOSE_ERR:
+		return "STMT_CLOSE_ERR"
+	case STMT_QUERY_ERR:
+		return "STMT_QUERY_ERR"
+	case STMT_EXEC_ERR:
+		return "STMT_EXEC_ERR"
+	case ROWS_CLOSE_ERR:
+		return "ROWS_CLOSE_ERR"
+	case ROWS_NEXT_ERR:
+		return "ROWS_NEXT_ERR"
+	case EMPTY_DATA_ERR:
+		return "EMPTY_DATA_ERR"
+	case LAST_INSERT_ID_ERR:
+		return "LAST_INSERT_ID_ERR"
+	case ROWS_AFFECTED_ERR:
+		return "ROWS_AFFECTED_ERR"
+	}
+	return ""
+}
+
+//if error contain target error.
+func (t STErr) Is(e STErr) bool {
+	if (t & e) == e {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (t STErr) IsErr(e STErr) error {
+	if t.Is(e) {
+		return errors.New(fmt.Sprintf("DEM %v", e.String()))
+	} else {
+		return nil
+	}
+}
+
+type Query struct {
+	Q    *regexp.Regexp
+	Args *regexp.Regexp
+}
+
+func (q *Query) Match(query string, args []driver.Value) bool {
+	return q.Q.MatchString(query) && q.Args.MatchString(fmt.Sprintf("%v", args))
+}
+
+//base event inteface implementation.
+type EvBase struct {
+	Errs  STErr
+	QErr  []Query
+	Dn    string
+	IsErr func(STErr) error
+}
+
+func NewEvBase(dn string) *EvBase {
+	eb := &EvBase{}
+	eb.Dn = dn
+	eb.IsErr = eb.Errs.IsErr
+	return eb
+}
+func (e *EvBase) ResetErr() {
+	e.SetErrs(0)
+	e.ClsQErr()
+}
+func (e *EvBase) SetErrs(err STErr) {
+	e.Errs = err
+}
+func (e *EvBase) AddErrs(err STErr) *EvBase {
+	e.Errs = e.Errs | err
+	return e
+}
+func (e *EvBase) ClsQErr() {
+	e.QErr = []Query{}
+}
+func (e *EvBase) AddQErr(err Query) *EvBase {
+	e.QErr = append(e.QErr, err)
+	return e
+}
+func (e *EvBase) AddQErr2(qreg string, areg string) *EvBase {
+	return e.AddQErr(Query{
+		Q:    regexp.MustCompile(qreg),
+		Args: regexp.MustCompile(areg),
+	})
+}
+func (e *EvBase) AddQErr3(qreg string) *EvBase {
+	return e.AddQErr2(qreg, ".*")
+}
+func (e *EvBase) Match(query string, args []driver.Value) bool {
+	for _, q := range e.QErr {
+		if q.Match(query, args) {
+			return true
+		}
+	}
+	return false
+}
+func (e *EvBase) OnOpen(dsn string) (*sql.DB, error) {
+	err := e.IsErr(OPEN_ERR)
+	if err != nil {
+		return nil, err
+	}
+	dn := ""
+	if len(e.Dn) < 1 {
+		dn = G_Dn
+	}
+	if len(dn) < 1 {
+		return nil, errors.New("dbname is not initial for event handler")
+	}
+	return sql.Open(dn, dsn)
+}
+func (e *EvBase) OnBegin(c *STConn) error {
+	return e.IsErr(BEGIN_ERR)
+}
+func (e *EvBase) OnPrepare(c *STConn, query string) error {
+	return e.IsErr(PREPARE_ERR)
+}
+func (e *EvBase) OnNumInput(c *STConn, query string, stm *sql.Stmt) int {
+	return strings.Count(query, "?")
+}
+func (e *EvBase) OnClose(c *STConn) error {
+	return e.IsErr(CLOSE_ERR)
+}
+func (e *EvBase) OnTxCommit(tx *STTx) error {
+	return e.IsErr(TX_COMMIT_ERR)
+}
+func (e *EvBase) OnTxRollback(tx *STTx) error {
+	return e.IsErr(TX_ROLLBACK_ERR)
+}
+func (e *EvBase) OnStmQuery(stm *STStmt, args []driver.Value) error {
+	log("Query(%v) args(%v)", stm.Q, args)
+	err := e.IsErr(STMT_QUERY_ERR)
+	if err != nil {
+		return err
+	}
+	if e.Match(stm.Q, args) {
+		return errors.New("DEM query matched error")
+	}
+	return nil
+}
+func (e *EvBase) OnStmExec(stm *STStmt, args []driver.Value) error {
+	log("Exec(%v) args(%v)", stm.Q, args)
+	err := e.IsErr(STMT_EXEC_ERR)
+	if err != nil {
+		return err
+	}
+	if e.Match(stm.Q, args) {
+		return errors.New("DEM query matched error")
+	}
+	return nil
+}
+func (e *EvBase) OnStmClose(stm *STStmt) error {
+	return e.IsErr(STMT_CLOSE_ERR)
+}
+func (e *EvBase) OnResLIId(res *STResult) error {
+	return e.IsErr(LAST_INSERT_ID_ERR)
+}
+func (e *EvBase) OnResARow(res *STResult) error {
+	return e.IsErr(ROWS_AFFECTED_ERR)
+}
+func (e *EvBase) OnRowNext(row *STRows) error {
+	return e.IsErr(ROWS_NEXT_ERR)
+}
+func (e *EvBase) IsEmpty(row *STRows) bool {
+	return e.Errs.Is(EMPTY_DATA_ERR)
+}
+func (e *EvBase) OnRowClose(row *STRows) error {
+	return e.IsErr(ROWS_CLOSE_ERR)
+}
+
+type EcEv struct {
+	TC map[STErr]int
+	MC map[STErr]int
+	EvBase
+}
+
+func (e *EcEv) ResetErr() {
+	e.EvBase.ResetErr()
+	e.ClsEc()
+}
+func (e *EcEv) AddEC(err STErr, c int) *EcEv {
+	e.TC[err] = c
+	return e
+}
+func (e *EcEv) Match(err STErr) error {
+	e.MC[err] = e.MC[err] + 1
+	for k, v := range e.TC {
+		if k.Is(err) && v == e.MC[err] {
+			return errors.New(fmt.Sprintf("%v count(%v) error", err.String(), v))
+		}
+	}
+	return nil
+}
+func (e *EcEv) CheckErr(err STErr) error {
+	err_m := e.Errs.IsErr(err)
+	if err_m == nil {
+		return e.Match(err)
+	} else {
+		return err_m
+	}
+}
+func (e *EcEv) ClsEc() {
+	e.TC = map[STErr]int{}
+	e.MC = map[STErr]int{}
+}
+
+func NewEcEv(dn string) *EcEv {
+	evec := &EcEv{}
+	evec.TC = map[STErr]int{}
+	evec.MC = map[STErr]int{}
+	evec.Dn = dn
+	evec.IsErr = evec.CheckErr
+	return evec
+}
+
+func init() {
+	Evb = NewEcEv("")
+	Register("DEM", Evb)
 }

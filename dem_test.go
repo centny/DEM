@@ -30,7 +30,29 @@ type TSt struct {
 	Add2   string    `m2s:"Add2"`
 }
 
+func TestDemEc(t *testing.T) {
+	ShowLog(true)
+	G_Dn = "mysql"
+	G_Dsn = TDbCon
+	Evb.AddEC(BEGIN_ERR, 2)
+	db := OpenDem()
+	_, err := db.Begin()
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	_, err = db.Begin()
+	if err == nil {
+		t.Error("error")
+		return
+	}
+	Evb.ResetErr()
+}
+
 func TestDem(t *testing.T) {
+	G_Dn = ""
+	G_Dsn = ""
+	ShowLog(true)
 	db, _ := sql.Open("DEM", test.TDbCon)
 	db.Begin()
 	NewEvBase("")
