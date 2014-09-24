@@ -2,8 +2,8 @@ package example
 
 import (
 	"database/sql"
-	"github.com/Centny/Cny4go/dbutil"
 	"github.com/Centny/DEM"
+	"github.com/Centny/gwf/dbutil"
 	_ "github.com/go-sql-driver/mysql"
 	"testing"
 )

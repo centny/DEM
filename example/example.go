@@ -3,8 +3,8 @@ package example
 import (
 	"database/sql"
 	"errors"
-	"github.com/Centny/Cny4go/dbutil"
-	"github.com/Centny/Cny4go/log"
+	"github.com/Centny/gwf/dbutil"
+	"github.com/Centny/gwf/log"
 	"time"
 )
 
