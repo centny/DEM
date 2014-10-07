@@ -7,10 +7,12 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"io"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 //register one drive to system by name.
@@ -61,6 +63,7 @@ func (d *STDriver) Open(dsn string) (driver.Conn, error) {
 		Db: con,
 		Dr: d,
 		Ev: d.Ev,
+		lc: sync.RWMutex{},
 	}, err
 }
 
@@ -68,25 +71,49 @@ type STConn struct {
 	Db *sql.DB
 	Dr *STDriver
 	Ev DbEv //database evernt
+	tx *STTx
+	lc sync.RWMutex
 }
 
 func (c *STConn) Begin() (driver.Tx, error) {
+	c.lc.Lock()
+	defer c.lc.Unlock()
+	if c.tx != nil {
+		return nil, errors.New("already starting transaction")
+	}
 	if e := c.Ev.OnBegin(c); e != nil {
 		return nil, e
 	}
 	tx, err := c.Db.Begin()
-	return &STTx{
+	if err != nil {
+		return nil, err
+	}
+	c.tx = &STTx{
 		Tx:   tx,
 		Conn: c,
 		Ev:   c.Ev,
-	}, err
+	}
+	return c.tx, nil
+}
+func (c *STConn) TxDone() {
+	c.lc.Lock()
+	defer c.lc.Unlock()
+	c.tx = nil
 }
 
 func (c *STConn) Prepare(query string) (driver.Stmt, error) {
+	c.lc.Lock()
+	defer c.lc.Unlock()
 	if e := c.Ev.OnPrepare(c, query); e != nil {
 		return nil, e
 	}
-	stm, err := c.Db.Prepare(query)
+	var stm *sql.Stmt
+	var err error
+	if c.tx == nil {
+		stm, err = c.Db.Prepare(query)
+	} else {
+		stm, err = c.tx.Tx.Prepare(query)
+	}
 	return &STStmt{
 		Q:    query,
 		Conn: c,
@@ -110,17 +137,23 @@ type STTx struct {
 }
 
 func (tx *STTx) Commit() error {
+	defer tx.Conn.TxDone()
 	if e := tx.Ev.OnTxCommit(tx); e != nil {
+		tx.Tx.Rollback()
 		return e
+	} else {
+		return tx.Tx.Commit()
 	}
-	return tx.Tx.Commit()
 }
 
 func (tx *STTx) Rollback() error {
+	defer tx.Conn.TxDone()
 	if e := tx.Ev.OnTxRollback(tx); e != nil {
+		tx.Tx.Rollback()
 		return e
+	} else {
+		return tx.Tx.Rollback()
 	}
-	return tx.Tx.Rollback()
 }
 
 type STStmt struct {

@@ -120,10 +120,12 @@ func TestDem(t *testing.T) {
 	ev.ResetErr()
 }
 func T(db *sql.DB, t *testing.T) {
+	fmt.Println("----->")
 	err := dbutil.DbExecF(db, "ttable.sql")
 	if err != nil {
 		t.Error(err.Error())
 	}
+	fmt.Println("abbbb--->")
 	res, err := dbutil.DbQuery(db, "select * from ttable where tid>?", 1)
 	if err != nil {
 		t.Error(err.Error())
@@ -368,4 +370,23 @@ func Map2Val2(columns []string, row map[string]interface{}, dest []driver.Value)
 
 func TestTt(t *testing.T) {
 	fmt.Println(regexp.MustCompile("(?i)a.*").MatchString("Ass"))
+}
+
+func TestTx(t *testing.T) {
+	G_Dn = "mysql"
+	G_Dsn = TDbCon
+	db, _ := sql.Open("DEM", test.TDbCon)
+	tx, _ := db.Begin()
+	// txi := tx.Txi()
+	// txi2 := txi.(*STTx)
+	fmt.Println(tx)
+	iid, err := dbutil.DbInsert2(tx, "insert into ttable(tname,titem,tval,status,time) values('name','item','val','N',now())")
+	if err != nil {
+		t.Error(err.Error())
+		return
+	}
+	fmt.Println(iid)
+	tx.Rollback()
+	db.Close()
+	// fmt.Println(tx.Commit())
 }
