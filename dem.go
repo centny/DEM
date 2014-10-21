@@ -11,6 +11,7 @@ import (
 	"io"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -51,6 +52,17 @@ type DbEv interface {
 	OnRowClose(row *STRows) error
 }
 
+var C_Stack map[*STConn]string = map[*STConn]string{}
+var T_Stack map[*STTx]string = map[*STTx]string{}
+var S_Stack map[*STStmt]string = map[*STStmt]string{}
+var R_Stack map[*STRows]string = map[*STRows]string{}
+
+func CallStack() string {
+	buf := make([]byte, 10240)
+	l := runtime.Stack(buf, false)
+	return string(buf[:l])
+}
+
 ////////////////////////////////////////////////////////////////////////////////////
 type STDriver struct {
 	N  string //driver name.
@@ -59,12 +71,17 @@ type STDriver struct {
 
 func (d *STDriver) Open(dsn string) (driver.Conn, error) {
 	con, err := d.Ev.OnOpen(dsn)
-	return &STConn{
+	if err != nil {
+		return nil, err
+	}
+	c := &STConn{
 		Db: con,
 		Dr: d,
 		Ev: d.Ev,
 		lc: sync.RWMutex{},
-	}, err
+	}
+	C_Stack[c] = CallStack()
+	return c, err
 }
 
 type STConn struct {
@@ -93,11 +110,17 @@ func (c *STConn) Begin() (driver.Tx, error) {
 		Conn: c,
 		Ev:   c.Ev,
 	}
+	T_Stack[c.tx] = CallStack()
 	return c.tx, nil
 }
 func (c *STConn) TxDone() {
 	c.lc.Lock()
 	defer c.lc.Unlock()
+	if _, ok := T_Stack[c.tx]; ok {
+		delete(T_Stack, c.tx)
+	} else {
+		fmt.Println("done the Tx not found in stack")
+	}
 	c.tx = nil
 }
 
@@ -114,18 +137,28 @@ func (c *STConn) Prepare(query string) (driver.Stmt, error) {
 	} else {
 		stm, err = c.tx.Tx.Prepare(query)
 	}
-	return &STStmt{
+	if err != nil {
+		return nil, err
+	}
+	s := &STStmt{
 		Q:    query,
 		Conn: c,
 		Stmt: stm,
 		Ev:   c.Ev,
 		Num:  c.Ev.OnNumInput(c, query, stm),
-	}, err
+	}
+	S_Stack[s] = CallStack()
+	return s, err
 }
 
 func (c *STConn) Close() error {
 	if e := c.Ev.OnClose(c); e != nil {
 		return e
+	}
+	if _, ok := C_Stack[c]; ok {
+		delete(C_Stack, c)
+	} else {
+		fmt.Println("closing connectiong not found in static")
 	}
 	return c.Db.Close()
 }
@@ -206,6 +239,11 @@ func (s *STStmt) Close() error {
 	if e := s.Ev.OnStmClose(s); e != nil {
 		return e
 	}
+	if _, ok := S_Stack[s]; ok {
+		delete(S_Stack, s)
+	} else {
+		fmt.Println("closing STMT not found in stack")
+	}
 	return s.Stmt.Close()
 }
 
@@ -269,6 +307,11 @@ func (rc *STRows) Next(dest []driver.Value) error {
 func (rc *STRows) Close() error {
 	if e := rc.Ev.OnRowClose(rc); e != nil {
 		return e
+	}
+	if _, ok := R_Stack[rc]; ok {
+		delete(R_Stack, rc)
+	} else {
+		fmt.Println("closing ROW not found in stack")
 	}
 	return rc.Rows.Close()
 }
