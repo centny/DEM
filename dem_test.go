@@ -390,3 +390,10 @@ func TestTx(t *testing.T) {
 	db.Close()
 	// fmt.Println(tx.Commit())
 }
+
+func TestMatch(t *testing.T) {
+	res := regexp.MustCompile("(?s)^.*AGS_FOOD.*CID.*$").MatchString(`SELECT F.* FROM AGS_FOOD F 
+			LEFT JOIN AGS_F2C_REF R ON R.FID=F.TID AND R.STATUS<>? 
+			WHERE R.CID=? AND F.TYPE=? AND F.STATUS>? ORDER BY F.TIME DESC LIMIT ?,?`)
+	fmt.Println(res)
+}
