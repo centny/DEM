@@ -210,12 +210,14 @@ func (s *STStmt) Query(args []driver.Value) (driver.Rows, error) {
 		targs = append(targs, v)
 	}
 	rows, e := s.Stmt.Query(targs...)
-	return &STRows{
+	rows_s := &STRows{
 		Stmt: s,
 		Rows: rows,
 		Args: args,
 		Ev:   s.Ev,
-	}, e
+	}
+	R_Stack[rows_s] = CallStack()
+	return rows_s, e
 }
 
 func (s *STStmt) Exec(args []driver.Value) (driver.Result, error) {
@@ -227,12 +229,13 @@ func (s *STStmt) Exec(args []driver.Value) (driver.Result, error) {
 		targs = append(targs, v)
 	}
 	res, e := s.Stmt.Exec(targs...)
-	return &STResult{
+	res_s := &STResult{
 		Stmt: s,
 		Res:  res,
 		Args: args,
 		Ev:   s.Ev,
-	}, e
+	}
+	return res_s, e
 }
 
 func (s *STStmt) Close() error {
