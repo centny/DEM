@@ -18,7 +18,7 @@ import (
 
 //register one drive to system by name.
 func Register(n string, ev DbEv) {
-	sql.Register(n, &STDriver{N: n, Ev: ev})
+	sql.Register(n, &STDriver{N: n, Ev: ev, DBS: map[*sql.DB]int{}})
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -56,6 +56,7 @@ var C_Stack map[*STConn]string = map[*STConn]string{}
 var T_Stack map[*STTx]string = map[*STTx]string{}
 var S_Stack map[*STStmt]string = map[*STStmt]string{}
 var R_Stack map[*STRows]string = map[*STRows]string{}
+var LAST *sql.DB = nil
 
 func CallStack() string {
 	buf := make([]byte, 10240)
@@ -65,8 +66,9 @@ func CallStack() string {
 
 ////////////////////////////////////////////////////////////////////////////////////
 type STDriver struct {
-	N  string //driver name.
-	Ev DbEv   //database evernt
+	N   string //driver name.
+	Ev  DbEv   //database evernt
+	DBS map[*sql.DB]int
 }
 
 func (d *STDriver) Open(dsn string) (driver.Conn, error) {
@@ -74,6 +76,8 @@ func (d *STDriver) Open(dsn string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.DBS[con] = 1
+	LAST = con
 	c := &STConn{
 		Db: con,
 		Dr: d,
@@ -155,6 +159,7 @@ func (c *STConn) Close() error {
 	if e := c.Ev.OnClose(c); e != nil {
 		return e
 	}
+	delete(c.Dr.DBS, c.Db)
 	if _, ok := C_Stack[c]; ok {
 		delete(C_Stack, c)
 	} else {
